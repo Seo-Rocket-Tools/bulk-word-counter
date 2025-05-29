@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bulk Word Counter</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        textarea {
+            width: 100%;
+            height: 200px;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .results {
+            margin-top: 30px;
+            border-top: 1px solid #eee;
+            padding-top: 20px;
+        }
+        .results h2 {
+            font-size: 18px;
+            margin-bottom: 15px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            text-align: left;
+            padding: 8px;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+        }
+        .error {
+            color: #dc3545;
+        }
+        .spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #007bff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .alert {
+            padding: 12px 16px;
+            margin-top: 15px;
+            border-radius: 4px;
+            display: none;
+        }
+        .alert-error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .alert-success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .copy-btn {
+            background-color: #28a745;
+            font-size: 14px;
+            padding: 8px 16px;
+            margin-left: 10px;
+        }
+        .copy-btn:hover {
+            background-color: #218838;
+        }
+        .progress-info {
+            margin-top: 15px;
+            padding: 12px;
+            background-color: #e9ecef;
+            border-radius: 4px;
+            display: none;
+        }
+        .progress-info .current-url {
+            font-size: 14px;
+            color: #495057;
+            word-break: break-all;
+            margin-top: 5px;
+        }
+        .progress-info .progress-text {
+            font-weight: 600;
+            color: #007bff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Bulk Word Counter</h1>
+        <p class="subtitle">Enter URLs below (one per line) to count words on each page</p>
+        
+        <textarea id="urlInput" placeholder="https://example.com/page1
+https://example.com/page2
+https://example.com/page3"></textarea>
+        
+        <button id="generateBtn" onclick="generateWordCount()">
+            <span id="btnText">Generate Word Count CSV</span>
+            <div class="spinner" id="spinner"></div>
+        </button>
+        
+        <div id="progressInfo" class="progress-info">
+            <div class="progress-text">Processing URLs...</div>
+            <div class="current-url"></div>
+        </div>
+        
+        <div id="alert" class="alert"></div>
+        
+        <div id="results" class="results" style="display: none;">
+            <h2>Results 
+                <button class="copy-btn" onclick="copyToClipboard()">Copy to Clipboard</button>
+            </h2>
+            <table id="resultsTable">
+                <thead>
+                    <tr>
+                        <th>URL</th>
+                        <th>Word Count</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        async function generateWordCount() {
+            const urlInput = document.getElementById('urlInput');
+            const urls = urlInput.value.trim().split('\n').filter(url => url.trim());
+            
+            if (urls.length === 0) {
+                showAlert('Please enter at least one URL', 'error');
+                return;
+            }
+            
+            // Show loading state
+            const btn = document.getElementById('generateBtn');
+            const spinner = document.getElementById('spinner');
+            const btnText = document.getElementById('btnText');
+            const progressInfo = document.getElementById('progressInfo');
+            const progressText = progressInfo.querySelector('.progress-text');
+            const currentUrlDiv = progressInfo.querySelector('.current-url');
+            
+            btn.disabled = true;
+            spinner.style.display = 'block';
+            btnText.textContent = 'Processing...';
+            progressInfo.style.display = 'block';
+            
+            // Clear previous results
+            document.getElementById('results').style.display = 'none';
+            document.getElementById('resultsBody').innerHTML = '';
+            hideAlert();
+            
+            const results = [];
+            const errors = [];
+            
+            // Process each URL
+            for (let i = 0; i < urls.length; i++) {
+                const url = urls[i].trim();
+                
+                // Update progress display
+                progressText.textContent = `Processing URL ${i + 1} of ${urls.length}...`;
+                currentUrlDiv.textContent = `Currently reading: ${url}`;
+                
+                try {
+                    const wordCount = await fetchAndCountWords(url);
+                    results.push({ url: url, wordCount });
+                } catch (error) {
+                    console.error(`Error processing ${url}:`, error);
+                    errors.push(url);
+                    results.push({ url: url, wordCount: 'Error' });
+                }
+            }
+            
+            // Display results
+            displayResults(results);
+            
+            // Show errors if any
+            if (errors.length > 0) {
+                showAlert(`Failed to process ${errors.length} URL(s): ${errors.join(', ')}`, 'error');
+            }
+            
+            // Generate and download CSV
+            if (results.filter(r => r.wordCount !== 'Error').length > 0) {
+                downloadCSV(results);
+            }
+            
+            // Reset button state
+            btn.disabled = false;
+            spinner.style.display = 'none';
+            btnText.textContent = 'Generate Word Count CSV';
+            progressInfo.style.display = 'none';
+        }
+        
+        async function fetchAndCountWords(url) {
+            // Use CORS proxy
+            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+            
+            const response = await fetch(proxyUrl);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const html = await response.text();
+            
+            // Create a temporary DOM element to parse HTML
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            
+            // Remove non-visible elements
+            const elementsToRemove = doc.querySelectorAll('script, style, noscript, nav, footer, header, aside');
+            elementsToRemove.forEach(el => el.remove());
+            
+            // Get visible text content
+            const visibleText = doc.body ? doc.body.textContent : '';
+            
+            // Count words (split on whitespace and filter empty strings)
+            const words = visibleText.trim().split(/\s+/).filter(word => word.length > 0);
+            
+            return words.length;
+        }
+        
+        function displayResults(results) {
+            const resultsDiv = document.getElementById('results');
+            const tbody = document.getElementById('resultsBody');
+            
+            tbody.innerHTML = '';
+            
+            results.forEach(result => {
+                const row = tbody.insertRow();
+                const urlCell = row.insertCell(0);
+                const countCell = row.insertCell(1);
+                
+                urlCell.textContent = result.url;
+                countCell.textContent = result.wordCount;
+                
+                if (result.wordCount === 'Error') {
+                    countCell.className = 'error';
+                }
+            });
+            
+            resultsDiv.style.display = 'block';
+        }
+        
+        function downloadCSV(results) {
+            // Create CSV content
+            let csvContent = 'URL,Word Count\n';
+            
+            results.forEach(result => {
+                // Escape commas in URLs if needed
+                const url = result.url.includes(',') ? `"${result.url}"` : result.url;
+                csvContent += `${url},${result.wordCount}\n`;
+            });
+            
+            // Create blob and download
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            
+            link.setAttribute('href', url);
+            link.setAttribute('download', `word-count-${new Date().toISOString().slice(0, 10)}.csv`);
+            link.style.visibility = 'hidden';
+            
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+        
+        function copyToClipboard() {
+            const results = [];
+            const rows = document.querySelectorAll('#resultsBody tr');
+            
+            // Build CSV content
+            let csvContent = 'URL,Word Count\n';
+            rows.forEach(row => {
+                const cells = row.querySelectorAll('td');
+                const url = cells[0].textContent;
+                const count = cells[1].textContent;
+                csvContent += `${url},${count}\n`;
+            });
+            
+            // Copy to clipboard
+            navigator.clipboard.writeText(csvContent).then(() => {
+                showAlert('Results copied to clipboard!', 'success');
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                showAlert('Failed to copy to clipboard', 'error');
+            });
+        }
+        
+        function showAlert(message, type) {
+            const alert = document.getElementById('alert');
+            alert.textContent = message;
+            alert.className = `alert alert-${type}`;
+            alert.style.display = 'block';
+        }
+        
+        function hideAlert() {
+            document.getElementById('alert').style.display = 'none';
+        }
+        
+        // Allow Enter key to submit when textarea is not focused
+        document.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && document.activeElement.id !== 'urlInput') {
+                generateWordCount();
+            }
+        });
+    </script>
+</body>
+</html>
